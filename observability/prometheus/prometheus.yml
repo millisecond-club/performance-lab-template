@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['perf-lab-nginx:9999']
+    metrics_path: /nginx-health
+    scrape_interval: 5s
+
+  # Future: Add application metrics if exposed
+  # - job_name: 'app'
+  #   static_configs:
+  #     - targets: ['perf-lab-app:4567']
+  #   metrics_path: /metrics
