@@ -1,14 +1,14 @@
 # Performance Lab Template
 
-Base template for creating individual performance labs. This template provides common infrastructure to test applications and measure performance metrics.
+Base template for creating individual performance labs. This template provides common infrastructure to test applications, run load tests, and measure performance metrics with observability.
 
 ## 🎯 Goal
 
 Create a standardized environment to:
 - Run applications in containers with resource limits
-- Perform load testing
-- Collect performance metrics
-- Compare results
+- Perform load testing with K6
+- Collect and visualize performance metrics
+- Compare results across different runs
 
 ## 📋 Prerequisites
 
@@ -18,35 +18,53 @@ Create a standardized environment to:
 
 ## 🚀 How to use
 
-### 1. Run basic test
+### 1. Run performance test
 ```bash
 ./test-runner.sh <application-image>
 ```
 
-Example:
+Example with the provided Ruby app:
 ```bash
-./test-runner.sh simple-sinatra-app:latest
+# Clone and build example app
+git clone https://github.com/millisecond-club/hello-world-ruby.git
+cd hello-world-ruby
+docker build -t hello-world-ruby .
+cd ..
+
+# Run performance test
+./test-runner.sh hello-world-ruby
 ```
 
-### 2. Stop environment
-The test runner includes automatic cleanup. The environment will be cleaned up when:
-- Test completes successfully
-- Script is interrupted (Ctrl+C)
-- An error occurs
+The test runner will:
+- Start the application with reverse proxy
+- Launch observability stack (Prometheus + Grafana)
+- Run K6 load tests
+- Display results summary
+- Keep environment running for analysis
 
-Manual cleanup (if needed):
+### 2. Monitor and analyze
+Access the monitoring interfaces:
+- **Application**: http://localhost:9999
+- **Grafana**: http://localhost:3001 (admin/admin)
+- **Prometheus**: http://localhost:9090
+
+### 3. Stop environment
 ```bash
-docker stop perf-lab-app perf-lab-nginx
-docker rm perf-lab-app perf-lab-nginx
-docker network rm perf-lab-network
+./cleanup.sh
 ```
+
+The environment runs persistently to allow real-time monitoring and analysis.
 
 ## 🏗️ Architecture
 
-The template uses **Nginx as a reverse proxy** to standardize the interface:
+The template uses a **reverse proxy** to standardize the interface and includes full observability:
 
 ```
-[Client] → [Nginx :9999] → [Your App :any-port]
+[Client] → [Reverse Proxy :9999] → [Your App :any-port]
+                    ↓
+[Prometheus] ← [Metrics] → [Grafana]
+                    ↓
+              [K6 Load Tests]
 ```
 
 ## 📁 Structure
@@ -54,15 +72,25 @@ The template uses **Nginx as a reverse proxy** to standardize the interface:
 ```
 performance-lab-template/
 ├── README.md              # This file
-├── docker-compose.yml     # Container orchestration
-├── test-runner.sh         # Main execution script (with auto-cleanup)
-├── nginx/                 # Nginx reverse proxy configuration
+├── docker-compose.yml     # Application stack (app + reverse proxy)
+├── test-runner.sh         # Main execution script (persistent mode)
+├── cleanup.sh             # Environment cleanup script
+├── nginx/                 # Reverse proxy configuration
 │   └── nginx.conf
-├── k6/                    # Load test scripts (future step)
-├── prometheus/            # Metrics configuration (future step)
-├── grafana/               # Dashboards (future step)
+├── observability/         # Monitoring stack
+│   ├── docker-compose.yml # Prometheus + Grafana
+│   ├── prometheus/
+│   │   └── prometheus.yml
+│   └── grafana/
+│       ├── datasources/
+│       └── dashboards/
+├── k6/                    # Load testing scripts
+│   └── load-test.js
 └── results/               # Test results
     └── YYYYMMDD_HHMMSS/   # Timestamped folder for each execution
+        ├── k6-summary.json
+        ├── k6-summary.txt
+        └── test_info.json
 ```
 
 ## 🔧 Configuration
@@ -80,35 +108,46 @@ By default, the application runs with:
 - CPU: 0.5 cores (limit), 0.1 cores (reservation)
 - Memory: 512MB (limit), 128MB (reservation)
 
-You can adjust these values in `docker-compose.yml`.
+### Load Testing
+K6 configuration in `k6/load-test.js`:
+- Duration: 40 seconds
+- Virtual Users: 5 → 10 → 0 (ramp up/down)
+- Target endpoint: `/hello`
+- Thresholds: P95 < 500ms, error rate < 10%
 
-## 📈 Next Steps
+You can adjust these values in their respective configuration files.
 
-This template is under iterative development. Upcoming features:
-- [ ] K6 integration for load testing
-- [ ] Prometheus metrics
-- [ ] Grafana visualization
-- [ ] Automated performance reports
+## 📊 Results
 
-## 🧪 Testing the Template
-
-To validate the template works:
-
-1. Build an example application that implements the required endpoints
-2. Run: `./test-runner.sh your-app:latest`  
-3. Verify endpoints respond correctly via port 9999
-4. Confirm results are saved in `results/`
-5. Test auto-cleanup by pressing Ctrl+C during execution
+After running tests, you'll have:
+- **Console summary** with key metrics
+- **JSON results** for programmatic analysis  
+- **Real-time dashboards** in Grafana
+- **Historical metrics** in Prometheus
+- **Test metadata** for comparison
 
 ### Expected Output
 ```bash
 ./test-runner.sh hello-world-ruby
 🚀 Performance Lab Test Runner
 ===============================================
-App Image: hello-world-ruby
-...
-✅ Application is responding via nginx!
-🧪 Testing endpoints via nginx (port 9999)...
-✅ Basic test completed successfully!
-📊 Application is running at: http://localhost:9999
+🌐 Creating network...
+📊 Starting observability stack...
+📦 Starting application stack...
+
+📊 Monitor URLs (starting up):
+  Grafana:      http://localhost:3001 (admin/admin)
+  Prometheus:   http://localhost:9090
+  Application:  http://localhost:9999
+
+🚀 Running K6 load test...
+📊 K6 Test Results Summary:
+==========================
+Total Requests: 220
+Failed Requests: 0%
+Average Duration: 45.23ms
+95th Percentile: 67.89ms
+Requests/sec: 5.50
+
+✅ Performance test completed successfully!
 ```
