@@ -23,9 +23,9 @@ echo "Results will be saved to: ${RESULTS_DIR}"
 echo ""
 
 # Create the results directory in the shared volume
-mkdir -p "results/${TIMESTAMP}"
+mkdir -p "${RESULTS_DIR}"
 # Ensure the host script can also write to this directory
-chmod 755 "results/${TIMESTAMP}"
+chmod 755 "${RESULTS_DIR}"
 
 # Check if environment is already running
 APP_RUNNING=$(docker ps -q -f name=perf-lab-app)
