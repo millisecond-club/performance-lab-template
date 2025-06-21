@@ -27,9 +27,11 @@ export default function () {
 }
 
 export function handleSummary(data) {
+  const resultsDir = __ENV.RESULTS_DIR || '/shared/results';
+
   return {
-    '/results/k6-summary.json': JSON.stringify(data, null, 2),
-    '/results/k6-summary.txt': textSummary(data, { indent: ' ', enableColors: false }),
+    [`${resultsDir}/k6-summary.json`]: JSON.stringify(data, null, 2),
+    [`${resultsDir}/k6-summary.txt`]: textSummary(data, { indent: ' ', enableColors: false }),
   };
 }
 
@@ -37,13 +39,17 @@ function textSummary(data, options = {}) {
   const indent = options.indent || '';
   const enableColors = options.enableColors || false;
 
-  let summary = `${indent}Test Summary:\n`;
-  summary += `${indent}============\n`;
+  let summary = `${indent}📊 K6 Test Results Summary:\n`;
+  summary += `${indent}==========================\n`;
   summary += `${indent}Total Requests: ${data.metrics.http_reqs.values.count}\n`;
-  summary += `${indent}Failed Requests: ${data.metrics.http_req_failed.values.rate * 100}%\n`;
+  summary += `${indent}Failed Requests: ${(data.metrics.http_req_failed.values.rate * 100).toFixed(2)}%\n`;
   summary += `${indent}Average Duration: ${data.metrics.http_req_duration.values.avg.toFixed(2)}ms\n`;
   summary += `${indent}95th Percentile: ${data.metrics.http_req_duration.values['p(95)'].toFixed(2)}ms\n`;
+  summary += `${indent}Max Duration: ${data.metrics.http_req_duration.values.max.toFixed(2)}ms\n`;
   summary += `${indent}Requests/sec: ${data.metrics.http_reqs.values.rate.toFixed(2)}\n`;
+  summary += `${indent}Data Received: ${(data.metrics.data_received.values.count / 1024).toFixed(2)} KB\n`;
+  summary += `${indent}Virtual Users: ${data.metrics.vus.values.value}\n`;
+  summary += `${indent}Test Duration: ${data.state.testRunDurationMs / 1000}s\n`;
 
   return summary;
 }
