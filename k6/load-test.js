@@ -11,13 +11,6 @@ export const options = {
     http_req_duration: ['p(95)<500'], // 95% of requests must be below 500ms
     http_req_failed: ['rate<0.1'],    // Error rate must be below 10%
   },
-  ext: {
-    loadimpact: {
-      distribution: {
-        'amazon:us:ashburn': { loadZone: 'amazon:us:ashburn', percent: 100 },
-      },
-    },
-  },
 };
 
 export default function () {
