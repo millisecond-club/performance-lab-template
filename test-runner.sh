@@ -149,7 +149,7 @@ echo ""
 
 docker-compose -f observability/docker-compose.yml --profile testing run --rm \
   --user "$(id -u):$(id -g)" \
-  -e RESULTS_DIR="/shared/results/${TIMESTAMP}" \
+  -e RESULTS_DIR="${RESULTS_DIR}" \
   k6 run --no-summary /scripts/load-test.js --out influxdb=http://influxdb:8086/k6
 
 echo ""
