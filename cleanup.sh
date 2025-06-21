@@ -41,7 +41,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     read -p "Delete InfluxDB data volume? (y/N): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker volume rm observability_influxdb_data 2>/dev/null || true
+        docker volume rm influxdb_data 2>/dev/null || true
         echo "✅ InfluxDB data volume removed"
     else
         echo "⚠️ InfluxDB data volume preserved for next run"
