@@ -23,9 +23,9 @@ echo "Results will be saved to: ${RESULTS_DIR}"
 echo ""
 
 # Create the results directory in the shared volume
-mkdir -p "${RESULTS_DIR}"
+mkdir -p "results/${TIMESTAMP}"
 # Ensure the host script can also write to this directory
-chmod 755 "${RESULTS_DIR}"
+chmod 755 "results/${TIMESTAMP}"
 
 # Check if environment is already running
 APP_RUNNING=$(docker ps -q -f name=perf-lab-app)
@@ -49,8 +49,8 @@ export APP_IMAGE
 echo "🌐 Creating network..."
 docker network create perf-lab-network 2>/dev/null || echo "Network already exists"
 
-echo "📊 Starting observability stack (InfluxDB, Prometheus, Grafana)..."
-docker-compose -f observability/docker-compose.yml up -d influxdb prometheus grafana
+echo "📊 Starting observability stack (InfluxDB + Grafana)..."
+docker-compose -f observability/docker-compose.yml up -d influxdb grafana
 
 echo "📦 Starting application stack..."
 docker-compose up -d
@@ -58,7 +58,6 @@ docker-compose up -d
 echo ""
 echo "📊 Monitor URLs (starting up):"
 echo "  Grafana:      http://localhost:3001 (admin/admin)"
-echo "  Prometheus:   http://localhost:9090"
 echo "  InfluxDB:     http://localhost:8086"
 echo "  Application:  http://localhost:9999"
 echo ""
@@ -149,8 +148,8 @@ echo ""
 
 docker-compose -f observability/docker-compose.yml --profile testing run --rm \
   --user "$(id -u):$(id -g)" \
-  -e RESULTS_DIR="${RESULTS_DIR}" \
-  k6 run --no-summary /scripts/load-test.js --out influxdb=http://influxdb:8086/k6
+  -e RESULTS_DIR="/shared/results/${TIMESTAMP}" \
+  k6 run /scripts/load-test.js --out influxdb=http://influxdb:8086/k6
 
 echo ""
 echo "📊 K6 Test Results Summary:"
@@ -183,7 +182,6 @@ cat > "${RESULTS_DIR}/test_info.json" << EOF
     "application": "http://localhost:9999",
     "grafana": "http://localhost:3001",
     "k6_dashboard": "http://localhost:3001/d/k6-load-testing",
-    "prometheus": "http://localhost:9090",
     "influxdb": "http://localhost:8086"
   }
 }
