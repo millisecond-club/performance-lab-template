@@ -22,23 +22,48 @@ echo "Timestamp: ${TIMESTAMP}"
 echo "Results will be saved to: ${RESULTS_DIR}"
 echo ""
 
-# Create the results directory in the shared volume
+# Create the results directory
 mkdir -p "${RESULTS_DIR}"
-# Ensure the host script can also write to this directory
 chmod 755 "${RESULTS_DIR}"
 
-# Check if environment is already running
+# Function to check if dependencies are running and healthy
+deps_running() {
+    local influxdb_running=$(docker ps -q -f name=perf-lab-influxdb)
+    local grafana_running=$(docker ps -q -f name=perf-lab-grafana)
+    
+    if [ ! -z "$influxdb_running" ] && [ ! -z "$grafana_running" ]; then
+        # Check if they're actually responding
+        if curl -s http://localhost:8086/ping > /dev/null 2>&1 && \
+           curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
+            return 0  # Both running and healthy
+        fi
+    fi
+    return 1  # Not running or not healthy
+}
+
+# Check dependencies and start if needed
+if ! deps_running; then
+    echo "📦 Dependencies not running, starting them..."
+    ./setup-deps.sh
+    echo ""
+else
+    echo "✅ Dependencies already running and healthy"
+    echo ""
+fi
+
+# Check if application is already running
 APP_RUNNING=$(docker ps -q -f name=perf-lab-app)
 if [ ! -z "$APP_RUNNING" ]; then
-    echo "⚠️  Found existing performance lab environment running"
-    read -p "Clean it up first? (y/N): " -n 1 -r
+    echo "⚠️  Found existing application container running"
+    read -p "Stop it and start fresh? (y/N): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ./cleanup.sh
+        echo "🛑 Stopping existing application..."
+        docker-compose down 2>/dev/null || true
         echo ""
     else
-        echo "❌ Cannot proceed with existing environment"
-        echo "Run ./cleanup.sh first or choose 'y' to clean up"
+        echo "❌ Cannot proceed with existing application"
+        echo "Stop the existing container first or choose 'y'"
         exit 1
     fi
 fi
@@ -46,43 +71,20 @@ fi
 # Export variable for docker-compose
 export APP_IMAGE
 
-echo "🌐 Creating network..."
-docker network create perf-lab-network 2>/dev/null || echo "Network already exists"
-
-echo "📊 Starting observability stack (InfluxDB + Grafana)..."
-docker-compose -f observability/docker-compose.yml up -d influxdb grafana
-
-echo "📦 Starting application stack..."
+echo "📦 Starting application..."
 docker-compose up -d
 
 echo ""
-echo "📊 Monitor URLs (starting up):"
-echo "  Grafana:      http://localhost:3001 (admin/admin)"
-echo "  InfluxDB:     http://localhost:8086"
+echo "📊 Monitor URLs:"
 echo "  Application:  http://localhost:9999"
+echo "  K6 Dashboard: http://localhost:3001/d/k6-load-testing"
+echo "  Grafana:      http://localhost:3001 (admin/admin)"
 echo ""
 
-echo "⏳ Waiting for services to start..."
-echo "  - Initial startup delay..."
-sleep 10
-
-echo "  - Checking InfluxDB..."
-timeout=60
-counter=0
-while [ $counter -lt $timeout ]; do
-    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
-        echo "  ✅ InfluxDB is ready!"
-        break
-    fi
-    counter=$((counter + 1))
-    sleep 1
-    if [ $counter -eq $timeout ]; then
-        echo "  ❌ InfluxDB failed to start within ${timeout} seconds"
-        exit 1
-    fi
-done
+echo "⏳ Waiting for application to start..."
 
 echo "  - Checking if application container is running..."
+sleep 5  # Give docker-compose a moment to start
 if ! docker ps | grep -q perf-lab-app; then
     echo "  ❌ Application container is not running!"
     echo "📋 App logs:"
@@ -94,7 +96,6 @@ echo "  - Checking application health via reverse proxy..."
 timeout=45
 counter=0
 while [ $counter -lt $timeout ]; do
-    # First check if we get any response (even error)
     response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/health 2>/dev/null || echo "000")
     
     if [ "$response" = "200" ]; then
@@ -139,13 +140,7 @@ echo "🚀 Running K6 load test with InfluxDB integration..."
 echo "📊 Real-time metrics available at: http://localhost:3001/d/k6-load-testing"
 echo ""
 
-# Run K6 as a service with InfluxDB output
-echo "🔧 K6 Configuration:"
-echo "  - InfluxDB URL: http://influxdb:8086"
-echo "  - Database: k6"
-echo "  - Results dir: ${RESULTS_DIR}"
-echo ""
-
+# Run K6 test
 docker-compose -f observability/docker-compose.yml --profile testing run --rm \
   --user "$(id -u):$(id -g)" \
   -e RESULTS_DIR="/shared/results/${TIMESTAMP}" \
@@ -161,17 +156,20 @@ else
     echo "📁 Files in results directory:"
     ls -la "${RESULTS_DIR}/" 2>/dev/null || echo "  Directory doesn't exist"
 fi
+
 echo ""
+echo "🛑 Stopping application (keeping dependencies running)..."
+docker-compose down
 
 echo ""
 echo "✅ Performance test completed successfully!"
 echo ""
 echo "📁 Results saved to: ${RESULTS_DIR}"
-echo "📊 View real-time dashboard: http://localhost:3001/d/k6-load-testing"
-echo "🛑 To cleanup: ./cleanup.sh"
+echo "📊 Dependencies still running - view dashboard: http://localhost:3001/d/k6-load-testing"
+echo "🛑 To stop dependencies: ./cleanup.sh"
 echo ""
 
-# Save basic test information
+# Save test information
 cat > "${RESULTS_DIR}/test_info.json" << EOF
 {
   "timestamp": "${TIMESTAMP}",
@@ -179,17 +177,17 @@ cat > "${RESULTS_DIR}/test_info.json" << EOF
   "test_type": "k6_load_test_with_influxdb",
   "status": "completed",
   "access_urls": {
-    "application": "http://localhost:9999",
     "grafana": "http://localhost:3001",
     "k6_dashboard": "http://localhost:3001/d/k6-load-testing",
     "influxdb": "http://localhost:8086"
-  }
+  },
+  "notes": "Dependencies kept running for analysis. Use ./cleanup.sh to stop them."
 }
 EOF
 
 echo "📝 Test info saved to ${RESULTS_DIR}/test_info.json"
 echo ""
 echo "🎯 Next steps:"
-echo "  1. Check the K6 dashboard at http://localhost:3001/d/k6-load-testing"
-echo "  2. Analyze the metrics in Grafana"
-echo "  3. Run ./cleanup.sh when done"
+echo "  1. Analyze results in Grafana dashboard"
+echo "  2. Run more tests: ./test-runner.sh <another-app-image>"
+echo "  3. When done: ./cleanup.sh"
